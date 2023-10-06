@@ -1,6 +1,9 @@
 from langchain.chains import LLMChain, APIChain
+from langchain.document_loaders import DirectoryLoader
 from langchain.chains.api.prompt import API_URL_PROMPT
 from langchain.llms import GPT4All
+from langchain.schema.output_parser import StrOutputParser
+from langchain.schema.runnable import RunnablePassthrough
 from langchain.chains import RetrievalQA
 from langchain.document_loaders import TextLoader
 from langchain.embeddings.gpt4all import GPT4AllEmbeddings
@@ -14,52 +17,30 @@ from langchain.prompts.chat import (
 
 import chainlit as cl
 
-# text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+template = """Answer the question based only on the following context:
+{context}
 
-system_template = """Use the following pieces of context to answer the users question.
-If you don't know the answer, just say that you don't know, don't try to make up an answer.
-ALWAYS return a "SOURCES" part in your answer.
-The "SOURCES" part should be a reference to the source of the document from which you got your answer.
-
-And if the user greets with greetings like Hi, hello, How are you, etc reply accordingly as well.
-
-Example of your response should be:
-
-The answer is foo
-SOURCES: xyz
-
-
-Begin!
-----------------
-{summaries}"""
-messages = [
-    SystemMessagePromptTemplate.from_template(system_template),
-    HumanMessagePromptTemplate.from_template("{question}"),
-]
-prompt = ChatPromptTemplate.from_messages(messages)
-chain_type_kwargs = {"prompt": prompt}
-# texts = text_splitter.split_text(text)
-
-# # Create a metadata for each chunk
-# metadatas = [{"source": f"{i}-pl"} for i in range(len(texts))]
+Question: {question}
+"""
+prompt = ChatPromptTemplate.from_template(template)
 
 # # Create a Chroma vector store
 embeddings_model = GPT4AllEmbeddings()
-loader = TextLoader("./api.txt")
+# loader = TextLoader("./api.txt")
+loader = DirectoryLoader('./Tadpole-Docs', glob="**/*.txt", loader_cls=TextLoader)
 documents = loader.load()
 text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
 texts = text_splitter.split_documents(documents)
 docsearch = Chroma.from_documents(texts, embeddings_model)
+retriever=docsearch.as_retriever()
 
-llm = GPT4All(
-		model="orca-mini-3b.ggmlv3.q4_0.bin", 
-		allow_download=True
-)
+llm = GPT4All(model="ggml-model-gpt4all-falcon-q4_0.bin", allow_download=True)
 chain = RetrievalQA.from_chain_type(
   llm=llm, 
   chain_type="stuff", 
-  retriever=docsearch.as_retriever()
+  retriever=retriever
 )
+
 
 # @cl.on_chat_start
 # async def on_chat_start():
@@ -96,9 +77,9 @@ chain = RetrievalQA.from_chain_type(
 @cl.on_message
 async def main(message):
     # chain = cl.user_session.get("chain")  # type: ConversationalRetrievalChain
-    cb = cl.AsyncLangchainCallbackHandler()
+    # cb = cl.AsyncLangchainCallbackHandler()
 
-    res = await chain.acall(message, callbacks=[cb])
+    res = await chain.acall(message, )
     # answer = res["answer"]
     # source_documents = res["source_documents"]  # type: List[Document]
 

@@ -19,4 +19,15 @@ Current Approach:
    - https://github.com/langchain-ai/langchain/blob/master/libs/langchain/langchain/chains/api/base.py#L125
 
 Site to get docs: https://www.postman.com/miguelolave/workspace/nasa-open-apis/overview
+
+- Code:
+	- ~~Finalize format~~
+  - Fetch repo
+- Data:
+  - Gather docs
+  - Create Github Repo
+- Submission:
+  - READMEs for repo
+  - Presentation
+
  
