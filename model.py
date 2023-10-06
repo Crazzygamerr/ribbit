@@ -16,6 +16,22 @@ from langchain.prompts.chat import (
 )
 
 import chainlit as cl
+import requests
+import zipfile
+import io
+
+github_archive_url = f'https://github.com/Crazzygamerr/Tadpole-Docs/archive/main.zip'
+
+response = requests.get(github_archive_url)
+if response.status_code == 200:
+    zip_content = io.BytesIO(response.content)
+    with zipfile.ZipFile(zip_content, 'r') as zip_ref:
+        zip_ref.extractall()
+    
+    print(f"Repository 'Tadpole-Docs' downloaded and extracted successfully.")
+else:
+    print(f"Failed to download repository. Status code: {response.status_code}")
+
 
 template = """Answer the question based only on the following context:
 {context}
