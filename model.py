@@ -1,118 +1,65 @@
-from langchain.chains import LLMChain, APIChain
 from langchain.document_loaders import DirectoryLoader
-from langchain.chains.api.prompt import API_URL_PROMPT
 from langchain.llms import GPT4All
-from langchain.schema.output_parser import StrOutputParser
-from langchain.schema.runnable import RunnablePassthrough
 from langchain.chains import RetrievalQA
-from langchain.document_loaders import TextLoader
+from langchain.document_loaders import UnstructuredMarkdownLoader
 from langchain.embeddings.gpt4all import GPT4AllEmbeddings
 from langchain.text_splitter import CharacterTextSplitter
 from langchain.vectorstores import Chroma
-from langchain.prompts.chat import (
-    ChatPromptTemplate,
-    SystemMessagePromptTemplate,
-    HumanMessagePromptTemplate,
-)
+from langchain.prompts.chat import ChatPromptTemplate
 
 import chainlit as cl
 import requests
 import zipfile
 import io
+import os
+import shutil
 
-github_archive_url = f'https://github.com/Crazzygamerr/Tadpole-Docs/archive/main.zip'
+@cl.cache
+def load_chain():
+  github_archive_url = f'https://github.com/Crazzygamerr/Tadpole-Docs/archive/main.zip'
 
-response = requests.get(github_archive_url)
-if response.status_code == 200:
-    zip_content = io.BytesIO(response.content)
-    with zipfile.ZipFile(zip_content, 'r') as zip_ref:
-        zip_ref.extractall()
-    
-    print(f"Repository 'Tadpole-Docs' downloaded and extracted successfully.")
-else:
-    print(f"Failed to download repository. Status code: {response.status_code}")
-
-
-template = """Answer the question based only on the following context:
-{context}
-
-Question: {question}
-"""
-prompt = ChatPromptTemplate.from_template(template)
-
-# # Create a Chroma vector store
-embeddings_model = GPT4AllEmbeddings()
-# loader = TextLoader("./api.txt")
-loader = DirectoryLoader('./Tadpole-Docs', glob="**/*.txt", loader_cls=TextLoader)
-documents = loader.load()
-text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-texts = text_splitter.split_documents(documents)
-docsearch = Chroma.from_documents(texts, embeddings_model)
-retriever=docsearch.as_retriever()
-
-llm = GPT4All(model="ggml-model-gpt4all-falcon-q4_0.bin", allow_download=True)
-chain = RetrievalQA.from_chain_type(
-  llm=llm, 
-  chain_type="stuff", 
-  retriever=retriever
-)
+  response = requests.get(github_archive_url)
+  if response.status_code == 200:
+      zip_content = io.BytesIO(response.content)
+      # if the folder is already present, delete it
+      if os.path.exists('Tadpole-Docs'):
+          shutil.rmtree('Tadpole-Docs')
+      with zipfile.ZipFile(zip_content, 'r') as zip_ref:
+          zip_ref.extractall()
+      
+      print(f"Repository 'Tadpole-Docs' downloaded and extracted successfully.")
+  else:
+      print(f"Failed to download repository. Status code: {response.status_code}")
 
 
-# @cl.on_chat_start
-# async def on_chat_start():
-    # files = None
+  template = """Answer the question based only on the following context:
+  {context}
 
-    # # Wait for the user to upload a file
-    # while files == None:
-    #     files = await cl.AskFileMessage(
-    #         content="Please upload a text file to begin!",
-    #         accept=["text/plain"],
-    #         max_size_mb=20,
-    #         timeout=180,
-    #     ).send()
+  Question: {question}
+  """
+  prompt = ChatPromptTemplate.from_template(template)
 
-    # file = files[0]
+  embeddings_model = GPT4AllEmbeddings()
+  loader = DirectoryLoader('./Tadpole-Docs-main', glob="**/*.md", loader_cls=UnstructuredMarkdownLoader)
+  documents = loader.load()
+  text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
+  texts = text_splitter.split_documents(documents)
+  docsearch = Chroma.from_documents(texts, embeddings_model)
+  retriever=docsearch.as_retriever()
 
-    # msg = cl.Message(
-    #     content=f"Processing `{file.name}`...", disable_human_feedback=True
-    # )
-    # await msg.send()
+  llm = GPT4All(model="wizardlm-13b-v1.1-superhot-8k.ggmlv3.q4_0.bin", n_threads=6, n_predict=512, streaming=True)
+  chain = RetrievalQA.from_chain_type(
+    llm=llm, 
+    chain_type="stuff", 
+    retriever=retriever
+  )
+  
+  return chain
 
-    # # Decode the file
-    # text = file.content.decode("utf-8")
-
-    # # Split the text into chunks
-
-    # Let the user know that the system is ready
-    # msg.content = f"Processing `{file.name}` done. You can now ask questions!"
-    # await msg.update()
-
-    # cl.user_session.set("chain", chain)
-
+chain = load_chain()
 
 @cl.on_message
 async def main(message):
-    # chain = cl.user_session.get("chain")  # type: ConversationalRetrievalChain
-    # cb = cl.AsyncLangchainCallbackHandler()
-
-    res = await chain.acall(message, )
-    # answer = res["answer"]
-    # source_documents = res["source_documents"]  # type: List[Document]
-
-    # text_elements = []  # type: List[cl.Text]
-
-    # if source_documents:
-    #     for source_idx, source_doc in enumerate(source_documents):
-    #         source_name = f"source_{source_idx}"
-    #         # Create the text element referenced in the message
-    #         text_elements.append(
-    #             cl.Text(content=source_doc.page_content, name=source_name)
-    #         )
-    #     source_names = [text_el.name for text_el in text_elements]
-
-    #     if source_names:
-    #         answer += f"\nSources: {', '.join(source_names)}"
-    #     else:
-    #         answer += "\nNo sources found"
-
-    await cl.Message(content=res['result']).send()
+    res = await cl.make_async(chain.run)(message, callbacks=[cl.LangchainCallbackHandler()])
+    
+    await cl.Message(content=f"{res}").send()

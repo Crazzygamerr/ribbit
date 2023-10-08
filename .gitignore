@@ -3,3 +3,7 @@
 /.chroma
 /.devcontainer
 /.vscode
+/.chainlit
+/Tadpole-Docs
+/Tadpole-Docs-main
+.chainlit/.langchain.db
